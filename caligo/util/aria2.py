@@ -6,6 +6,22 @@ from aioaria2 import Aria2WebsocketTrigger
 from async_property import async_property
 
 
+def human_readable_bytes(
+    value: int,
+    digits: int = 2,
+    delim: str = "",
+    postfix: str = ""
+) -> str:
+    chosen_unit = "B"
+    for unit in ("KiB", "MiB", "GiB", "TiB"):
+        if value > 1000:
+            value /= 1024
+            chosen_unit = unit
+        else:
+            break
+    return f"{value:.{digits}f}" + delim + chosen_unit + postfix
+
+
 class BitTorrent:
 
     def __init__(self, data: Dict[str, Any]) -> None:

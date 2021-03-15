@@ -106,7 +106,7 @@ class Aria2(module.Module):
         self.client = await Aria2WebSocket.init(self)
 
         self.invoker = None
-        self.progress_string = {}
+        self.progress_string = ""
         self.cancelled = False
 
     async def on_stop(self) -> None:
@@ -121,6 +121,9 @@ class Aria2(module.Module):
         if file.metadata is True:
             meta += " - Metadata"
 
+        if gid in self.downloads:
+            del self.downloads[gid]
+
         self.log.info(f"Complete download: [gid: '{gid}']{meta}")
 
     async def onDownloadError(self, gid: str) -> None:
@@ -134,11 +137,9 @@ class Aria2(module.Module):
         # Save the message but delete first so we don't spam chat with new download
         if self.invoker is not None:
             await self.invoker.delete()
-
         self.invoker = msg
 
-        self.bot.loop.create_task(self.checkProgress(gid))
-
+        self.bot.loop.create_task(self.updateProgress())
         self.data[gid] = asyncio.Queue(1)
 
         try:
@@ -163,50 +164,42 @@ class Aria2(module.Module):
         res = await self.client.tellStatus(gid)
         return util.aria2.Download(self, res)
 
-    async def checkProgress(self, gid: str) -> Union[str, pyrogram.types.Message]:
-        complete = None
-        while complete is not True:
-            if self.cancelled is True:
-                return "Cancelled"
+    async def checkProgress(self) -> None:
+        progress_string = ""
+        time = util.time.format_duration_us
+        human = util.aria2.human_readable_bytes
+        for file in self.downloads.values():
+            file = await file.update
+            if not file.error_message:
+                downloaded = file.completed_length
+                file_size = file.total_length
+                percent = file.progress
+                speed = file.download_speed
+                eta = file.eta
+                bullets = "●" * int(round(percent * 10)) + "○"
+                if len(bullets) > 10:
+                    bullets = bullets.replace("○", "")
+                space = '   ' * (10 - len(bullets))
+                progress_string += (
+                    f"{file.name}\nGID: `{file.gid}`\n"
+                    f"Progress: [{bullets + space}] {round(percent * 100)}%\n"
+                    f"{human(downloaded)} of {human(file_size)} @ "
+                    f"{human(speed, postfix='/s')}\neta - {time(eta)}\n\n"
+                )
 
-            file = await self.downloads[gid].update
-            complete = file.complete
-            self.log.info(complete)
-            try:
-                if not complete and not file.error_message:
-                    downloaded = file.completed_length
-                    file_size = file.total_length
-                    percent = file.progress
-                    speed = file.download_speed
-                    eta = file.eta
-                    bullets = "●" * int(round(percent * 10)) + "○"
-                    if len(bullets) > 10:
-                        bullets = bullets.replace("○", "")
-                    space = '   ' * (10 - len(bullets))
-                    progress_string = (
-                        f"Progress: [{bullets + space}] {round(percent * 100)}%\n"
-                        f"{downloaded} of {file_size} @ {speed}\n"
-                        f"eta - {eta}"
-                    )
-                    if (self.progress_string.get(gid) is not None and
-                            self.progress_string.get(gid) != progress_string) or (
-                            self.progress_string.get(gid) is None):
-                        await self.invoker.edit(progress_string)
+        self.progress_string = progress_string
 
-                    self.progress_string[gid] = progress_string
-                await asyncio.sleep(3)
-                file = await self.downloads[gid].update
-                complete = file.complete
-                self.log.info(complete)
-                if complete:
-                    self.log.info("Completed")
-                    del self.downloads[gid]
-            except Exception as e:
-                self.log.info(f"ERROR: {e}")
-                return str(e)
+    async def updateProgress(self) -> None:
+        done = False
+        while not done:
+            if not self.downloads:
+                done = True
 
-        self.log.info("Exited loop")
-        return "Completed"
+            if not done:
+                await self.checkProgress()
+                progress = self.progress_string
+                await self.invoker.edit(progress)
+                await asyncio.sleep(5)
 
     async def cmd_test(self, ctx):
         gid = await self.addDownload(ctx.input, ctx.msg)
