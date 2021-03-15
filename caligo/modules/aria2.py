@@ -187,12 +187,12 @@ class Aria2(module.Module):
                         f"{downloaded} of {file_size} @ {speed}\n"
                         f"eta - {eta}"
                     )
-                    if (self.progress.get(gid) is not None and
-                            self.progress.get(gid) != progress_string) or (
-                            self.progress.get(gid) is None):
+                    if (self.progress_string.get(gid) is not None and
+                            self.progress_string.get(gid) != progress_string) or (
+                            self.progress_stringn.get(gid) is None):
                         await self.invoke.edit(progress_string)
 
-                    self.progress[gid] = progress_string
+                    self.progress_string[gid] = progress_string
                 await asyncio.sleep(3)
                 file = await self.downloads[gid].update
                 complete = file.complete
