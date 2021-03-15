@@ -198,12 +198,11 @@ class Aria2(module.Module):
                 complete = file.complete
                 if complete:
                     del self.downloads[gid]
-                    return "Completed..."
-                else:
-                    continue
             except Exception as e:
                 self.log.info(f"ERROR: {e}")
                 return str(e)
+
+        return "Completed"
 
     async def cmd_test(self, ctx):
         gid = await self.addDownload(ctx.input, ctx.msg)
