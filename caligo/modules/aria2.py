@@ -179,8 +179,9 @@ class Aria2(module.Module):
                     speed = file.download_speed
                     eta = file.eta
                     bullets = "●" * int(round(percent * 10)) + "○"
-                    self.log.info(len(bullets))
-                    space = ' ' * (10 - len(bullets))
+                    if len(bullets) > 10:
+                        bullets = bullets.replace("○", "")
+                    space = '  ' * (10 - len(bullets))
                     progress_string = (
                         f"Progress: [{bullets + space}] {round(percent * 100)}%\n"
                         f"{downloaded} of {file_size} @ {speed}\n"
@@ -198,8 +199,8 @@ class Aria2(module.Module):
                 if complete:
                     del self.downloads[gid]
                     return "Completed..."
-
-                continue
+                else:
+                    continue
             except Exception as e:
                 self.log.info(f"ERROR: {e}")
                 return str(e)
