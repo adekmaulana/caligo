@@ -151,7 +151,7 @@ class Download:
 
     @property
     def completed_length(self) -> int:
-        return int(self._data["completedLength"])
+        return float(self._data["completedLength"])
 
     @property
     def download_speed(self) -> int:
@@ -210,7 +210,7 @@ class Download:
     @property
     def progress(self) -> float:
         try:
-            return self.completed_length / self.total_length * 100
+            return self.completed_length / self.total_length
         except ZeroDivisionError:
             return 0.0
 

@@ -24,7 +24,7 @@ class Aria2WebSocket:
         link = "https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt"
         async with api.bot.http.get(link) as resp:
             trackers_list: str = await resp.text()
-            trackers: str = "[" + trackers_list.replace('\n\n', ',') + "]"
+            trackers: str = "[" + trackers_list.replace("\n\n", ",") + "]"
 
         cmd = [
             "aria2c",
@@ -97,12 +97,17 @@ class Aria2(module.Module):
     data: Dict[str, asyncio.Queue]
     downloads: Dict[str, str]
 
-    async def on_load(self) -> None:
-        self.bot.unload_module(self)
+    invoker: pyrogram.types.Message
+    progress_string: Dict[str, str]
 
+    async def on_load(self) -> None:
         self.data = {}
         self.downloads = {}
         self.client = await Aria2WebSocket.init(self)
+
+        self.invoker = None
+        self.progress_string = {}
+        self.cancelled = False
 
     async def on_stop(self) -> None:
         await self.client.close()
@@ -119,12 +124,18 @@ class Aria2(module.Module):
         self.log.info(f"Complete download: [gid: '{gid}']{meta}")
 
     async def onDownloadError(self, gid: str) -> None:
-        file = await self.downloads[gid].update
+        file = await self.getDownload(gid)
         self.log.warning(file.error_message)
 
     async def addDownload(self, uri: str, msg: pyrogram.types.Message) -> str:
         gid = await self.client.addUri([uri])
         self.downloads[gid] = await self.getDownload(gid)
+
+        # Save the message but delete first so we don't spam chat with new download
+        if self.invoker is not None:
+            await self.invoker.delete()
+            self.invoker = msg
+
         self.bot.loop.create_task(self.checkProgress(gid))
 
         self.data[gid] = asyncio.Queue(1)
@@ -134,6 +145,7 @@ class Aria2(module.Module):
         except asyncio.TimeoutError:
             fut = None
         finally:
+            self.data[gid].task_done()
             del self.data[gid]
 
         if fut is not None:
@@ -154,35 +166,46 @@ class Aria2(module.Module):
     async def checkProgress(self, gid: str) -> Union[str, pyrogram.types.Message]:
         complete = False
         while not complete:
+            if self.cancelled is True:
+                return "Cancelled"
+
             file = await self.downloads[gid].update
             complete = file.complete
             try:
                 if not complete and not file.error_message:
-                    percentage = file.progress
-                    downloaded = file.total_length
+                    downloaded = file.completed_length
+                    file_size = file.total_length
+                    percent = file.progress
                     speed = file.download_speed
                     eta = file.eta
-                    text = f"{percentage}%: {downloaded} -> {speed} - {eta}"
+                    bullets = "●" * int(round(percent * 10)) + "○"
+                    self.log.info(len(bullets))
+                    space = ' ' * (10 - len(bullets))
+                    progress_string = (
+                        f"Progress: [{bullets + space}] {round(percent * 100)}%\n"
+                        f"{downloaded} of {file_size} @ {speed}\n"
+                        f"eta - {eta}"
+                    )
+                    if (self.progress.get(gid) is not None and
+                            self.progress.get(gid) != progress_string) or (
+                            self.progress.get(gid) is None):
+                        await self.invoke.edit(progress_string)
 
-                    self.log.info(text)
-                await asyncio.sleep(2)
+                    self.progress[gid] = progress_string
+                await asyncio.sleep(3)
                 file = await self.downloads[gid].update
                 complete = file.complete
                 if complete:
                     del self.downloads[gid]
-                    self.log.info("Completed")
-                else:
-                    continue
+                    return "Completed..."
+
+                continue
             except Exception as e:
-                self.log.info("ERROR: ", e)
-                return
+                self.log.info(f"ERROR: {e}")
+                return str(e)
 
     async def cmd_test(self, ctx):
         gid = await self.addDownload(ctx.input, ctx.msg)
 
-        if gid:
-            file = self.downloads[gid]
-            self.log.info(dir(file))
-            await file.pause
-            await file.remove
-        return
+        ret = await self.checkProgress(gid)
+        return ret
