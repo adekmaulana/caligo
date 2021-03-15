@@ -164,13 +164,14 @@ class Aria2(module.Module):
         return util.aria2.Download(self, res)
 
     async def checkProgress(self, gid: str) -> Union[str, pyrogram.types.Message]:
-        complete = False
-        while not complete:
+        complete = None
+        while complete is not True:
             if self.cancelled is True:
                 return "Cancelled"
 
             file = await self.downloads[gid].update
             complete = file.complete
+            self.log.info(complete)
             try:
                 if not complete and not file.error_message:
                     downloaded = file.completed_length
@@ -181,7 +182,7 @@ class Aria2(module.Module):
                     bullets = "●" * int(round(percent * 10)) + "○"
                     if len(bullets) > 10:
                         bullets = bullets.replace("○", "")
-                    space = '  ' * (10 - len(bullets))
+                    space = '   ' * (10 - len(bullets))
                     progress_string = (
                         f"Progress: [{bullets + space}] {round(percent * 100)}%\n"
                         f"{downloaded} of {file_size} @ {speed}\n"
@@ -196,12 +197,15 @@ class Aria2(module.Module):
                 await asyncio.sleep(3)
                 file = await self.downloads[gid].update
                 complete = file.complete
+                self.log.info(complete)
                 if complete:
+                    self.log.info("Completed")
                     del self.downloads[gid]
             except Exception as e:
                 self.log.info(f"ERROR: {e}")
                 return str(e)
 
+        self.log.info("Exited loop")
         return "Completed"
 
     async def cmd_test(self, ctx):
