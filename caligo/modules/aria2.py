@@ -189,7 +189,7 @@ class Aria2(module.Module):
                     if (self.progress_string.get(gid) is not None and
                             self.progress_string.get(gid) != progress_string) or (
                             self.progress_string.get(gid) is None):
-                        await self.invoke.edit(progress_string)
+                        await self.invoker.edit(progress_string)
 
                     self.progress_string[gid] = progress_string
                 await asyncio.sleep(3)
