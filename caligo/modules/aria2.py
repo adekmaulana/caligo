@@ -175,7 +175,7 @@ class Aria2(module.Module):
                 file_size = file.total_length
                 percent = file.progress
                 speed = file.download_speed
-                eta = file.eta
+                eta = time(file.eta) if file.eta != "N/A" else file.eta
                 bullets = "●" * int(round(percent * 10)) + "○"
                 if len(bullets) > 10:
                     bullets = bullets.replace("○", "")
@@ -184,7 +184,7 @@ class Aria2(module.Module):
                     f"{file.name}\nGID: `{file.gid}`\n"
                     f"Progress: [{bullets + space}] {round(percent * 100)}%\n"
                     f"{human(downloaded)} of {human(file_size)} @ "
-                    f"{human(speed, postfix='/s')}\neta - {time(eta)}\n\n"
+                    f"{human(speed, postfix='/s')}\neta - {eta}\n\n"
                 )
 
         self.progress_string = progress_string
