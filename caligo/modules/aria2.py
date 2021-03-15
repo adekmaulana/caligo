@@ -134,7 +134,8 @@ class Aria2(module.Module):
         # Save the message but delete first so we don't spam chat with new download
         if self.invoker is not None:
             await self.invoker.delete()
-            self.invoker = msg
+
+        self.invoker = msg
 
         self.bot.loop.create_task(self.checkProgress(gid))
 
