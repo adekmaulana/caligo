@@ -146,7 +146,6 @@ class Aria2(module.Module):
         except asyncio.TimeoutError:
             fut = None
         finally:
-            self.data[gid].task_done()
             del self.data[gid]
 
         if fut is not None:
