@@ -4,6 +4,7 @@ from typing import Any, ClassVar, Dict, Union
 
 import aioaria2
 import pyrogram
+from pyrogram.errors import MessageNotModified, MessageEmpty
 
 from .. import module, util
 
@@ -203,7 +204,7 @@ class Aria2(module.Module):
             space = '   ' * (10 - len(bullets))
             progress_string += (
                 f"`{file.name}`\nGID: `{file.gid}`\n"
-                f"Status: **{file.status}**\n"
+                f"Status: **{file.status.capitalize()}**\n"
                 f"Progress: [{bullets + space}] {round(percent * 100)}%\n"
                 f"{human(downloaded)} of {human(file_size)} @ "
                 f"{human(speed, postfix='/s')}\neta - {eta}\n\n"
@@ -218,7 +219,7 @@ class Aria2(module.Module):
                 progress = self.progress_string
                 try:
                     await self.invoker.edit(progress)
-                except pyrogram.errors.exceptions.bad_request_400.MessageEmpty:
+                except (MessageNotModified, MessageEmpty):
                     await asyncio.sleep(1)
                     continue
                 await asyncio.sleep(5)
