@@ -201,9 +201,6 @@ class Aria2(module.Module):
                 bullets = bullets.replace("○", "")
 
             space = '   ' * (10 - len(bullets))
-            if downloaded == file_size or file.complete:
-                continue
-
             progress_string += (
                 f"`{file.name}`\nGID: `{file.gid}`\n"
                 f"Status: **{file.status}**\n"
@@ -219,8 +216,11 @@ class Aria2(module.Module):
             if self.downloads:
                 await self.checkProgress()
                 progress = self.progress_string
-                if progress is not None:
+                try:
                     await self.invoker.edit(progress)
+                except pyrogram.errors.exceptions.bad_request_400.MessageEmpty:
+                    await asyncio.sleep(1)
+                    continue
                 await asyncio.sleep(5)
             else:
                 await asyncio.sleep(1)
