@@ -15,6 +15,9 @@ class Aria2WebSocket:
 
     def __init__(self, api: "Aria2") -> None:
         self.api = api
+        self.start = False
+
+        self.log = self.api.log
 
     @classmethod
     async def init(cls, api: "Aria2") -> "Aria2WebSocket":
@@ -63,31 +66,68 @@ class Aria2WebSocket:
         self = cls(api)
         client = await aioaria2.Aria2WebsocketTrigger.new(url=protocol)
 
-        trigger_names = ["Start", "Complete", "Error"]
-        for handler_name in trigger_names:
-            client.register(self.on_trigger, f"aria2.onDownload{handler_name}")
+        trigger = [
+            (self.on_download_start, "Start"),
+            (self.on_download_complete, "Complete"),
+            (self.on_download_error, "Error")
+        ]
+        for handler, name in trigger:
+            client.register(handler, f"aria2.onDownload{name}")
         return client
 
-    async def on_trigger(
+    async def get_download(
+        self,
+        client: aioaria2.Aria2WebsocketTrigger,
+        gid: str
+    ) -> util.aria2.Download:
+        res = await client.tellStatus(gid)
+        return await util.run_sync(util.aria2.Download, client, res)
+
+    async def on_download_start(
         self,
         trigger: aioaria2.Aria2WebsocketTrigger,
         data: Union[Dict[str, str], Any]
     ):
-        method = data.get("method").removeprefix("aria2.")
+        gid = data["params"][0]["gid"]
+        self.api.downloads[gid] = await self.get_download(trigger, gid)
+        self.log.info(f"Starting download: [gid: '{gid}']")
+
+        # Only create task once, because we running on forever loop
+        if self.start is False:
+            self.start = True
+            self.api.bot.loop.create_task(await self.api.updateProgress())
+
+    async def on_download_complete(
+        self,
+        trigger: aioaria2.Aria2WebsocketTrigger,
+        data: Union[Dict[str, str], Any]
+    ):
         gid = data["params"][0]["gid"]
 
-        if method == "onDownloadComplete":
-            self.api.downloads[gid] = await self.api.downloads[gid].update
-            file = self.api.downloads[gid]
-            queue = self.api.data[gid]
+        self.api.downloads[gid] = await self.api.downloads[gid].update
+        file = self.api.downloads[gid]
+        queue = self.api.data[gid]
 
-            if file.metadata is True:
-                newGid = file.followed_by[0]
-                self.api.downloads[newGid] = await self.api.getDownload(newGid)
-                queue.put_nowait(newGid)
+        meta = ""
+        if file.metadata is True:
+            newGid = file.followed_by[0]
+            queue.put_nowait(newGid)
+            meta += " - Metadata"
+        else:
+            await self.api.invoker.reply("Completed download: `{file.name}`")
 
-        update = getattr(self.api, method)
-        await update(gid)
+        self.log.info(f"Complete download: [gid: '{gid}']{meta}")
+        del self.api.downloads[gid]
+
+    async def on_download_error(
+        self,
+        trigger: aioaria2.Aria2WebsocketTrigger,
+        data: Union[Dict[str, str], Any]
+    ):
+        gid = data["params"][0]["gid"]
+
+        file = await self.get_download(trigger, gid)
+        self.log.warning(file.error_message)
 
 
 class Aria2(module.Module):
@@ -100,6 +140,9 @@ class Aria2(module.Module):
     invoker: pyrogram.types.Message
     progress_string: Dict[str, str]
 
+    cancelled: bool
+    stopping: bool
+
     async def on_load(self) -> None:
         self.data = {}
         self.downloads = {}
@@ -107,41 +150,23 @@ class Aria2(module.Module):
 
         self.invoker = None
         self.progress_string = ""
+
         self.cancelled = False
+        self.stopping = False
 
     async def on_stop(self) -> None:
+        self.stopping = True
         await self.client.close()
-
-    async def onDownloadStart(self, gid: str) -> None:
-        self.log.info(f"Starting download: [gid: '{gid}']")
-
-    async def onDownloadComplete(self, gid: str):
-        meta = ""
-        file = self.downloads[gid]
-        if file.metadata is True:
-            meta += " - Metadata"
-
-        if gid in self.downloads:
-            del self.downloads[gid]
-
-        self.log.info(f"Complete download: [gid: '{gid}']{meta}")
-
-    async def onDownloadError(self, gid: str) -> None:
-        file = await self.getDownload(gid)
-        self.log.warning(file.error_message)
 
     async def addDownload(self, uri: str, msg: pyrogram.types.Message) -> str:
         gid = await self.client.addUri([uri])
-        self.downloads[gid] = await self.getDownload(gid)
 
         # Save the message but delete first so we don't spam chat with new download
         if self.invoker is not None:
             await self.invoker.delete()
         self.invoker = msg
 
-        self.bot.loop.create_task(self.updateProgress())
         self.data[gid] = asyncio.Queue(1)
-
         try:
             fut = await asyncio.wait_for(self.data[gid].get(), 10)
         except asyncio.TimeoutError:
@@ -160,49 +185,45 @@ class Aria2(module.Module):
     async def removeDownload(self, gid: str) -> str:
         return await self.client.remove(gid)
 
-    async def getDownload(self, gid: str) -> util.aria2.Download:
-        res = await self.client.tellStatus(gid)
-        return util.aria2.Download(self, res)
-
     async def checkProgress(self) -> None:
         progress_string = ""
         time = util.time.format_duration_us
         human = util.aria2.human_readable_bytes
         for file in self.downloads.values():
             file = await file.update
-            if not file.error_message:
-                downloaded = file.completed_length
-                file_size = file.total_length
-                percent = file.progress
-                speed = file.download_speed
-                eta = time(file.eta) if file.eta != "N/A" else file.eta
-                bullets = "●" * int(round(percent * 10)) + "○"
-                if len(bullets) > 10:
-                    bullets = bullets.replace("○", "")
-                space = '   ' * (10 - len(bullets))
-                progress_string += (
-                    f"{file.name}\nGID: `{file.gid}`\n"
-                    f"Progress: [{bullets + space}] {round(percent * 100)}%\n"
-                    f"{human(downloaded)} of {human(file_size)} @ "
-                    f"{human(speed, postfix='/s')}\neta - {eta}\n\n"
-                )
+            downloaded = file.completed_length
+            file_size = file.total_length
+            percent = file.progress
+            speed = file.download_speed
+            eta = time(file.eta) if file.eta != "N/A" else file.eta
+
+            bullets = "●" * int(round(percent * 10)) + "○"
+            if len(bullets) > 10:
+                bullets = bullets.replace("○", "")
+
+            space = '   ' * (10 - len(bullets))
+            if downloaded == file_size or file.complete:
+                continue
+
+            progress_string += (
+                f"`{file.name}`\nGID: `{file.gid}`\n"
+                f"Status: **{file.status}**"
+                f"Progress: [{bullets + space}] {round(percent * 100)}%\n"
+                f"{human(downloaded)} of {human(file_size)} @ "
+                f"{human(speed, postfix='/s')}\neta - {eta}\n\n"
+            )
 
         self.progress_string = progress_string
 
     async def updateProgress(self) -> None:
-        done = False
-        while not done:
-            if not self.downloads:
-                done = True
-
-            if not done:
+        while not self.stopping:
+            if self.downloads:
                 await self.checkProgress()
                 progress = self.progress_string
                 await self.invoker.edit(progress)
                 await asyncio.sleep(5)
+            else:
+                await asyncio.sleep(1)
 
     async def cmd_test(self, ctx):
-        gid = await self.addDownload(ctx.input, ctx.msg)
-
-        ret = await self.checkProgress(gid)
-        return ret
+        await self.addDownload(ctx.input, ctx.msg)

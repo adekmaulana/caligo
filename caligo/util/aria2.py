@@ -89,8 +89,12 @@ class File:
 
 class Download:
 
-    def __init__(self, api: Aria2WebsocketTrigger, data: Dict[str, Any]) -> None:
-        self.api = api
+    def __init__(
+        self,
+        client: Aria2WebsocketTrigger,
+        data: Dict[str, Any]
+    ) -> None:
+        self.client = client
         self._data = data or {}
 
         self._name = ""
@@ -105,7 +109,7 @@ class Download:
 
     @async_property
     async def update(self) -> "Download":
-        self._data = await self.api.client.tellStatus(self.gid)
+        self._data = await self.client.tellStatus(self.gid)
 
         self._name = ""
         self._files = []
@@ -243,9 +247,9 @@ class Download:
     @async_property
     async def remove(self, force: bool = False) -> bool:
         if force is True:
-            func = self.api.client.forceRemove
+            func = self.client.forceRemove
         else:
-            func = self.api.client.remove
+            func = self.client.remove
 
         res = await func(self.gid)
         if isinstance(res, str):
@@ -256,9 +260,9 @@ class Download:
     @async_property
     async def pause(self, force: bool = False) -> bool:
         if force is True:
-            func = self.api.client.forcePause
+            func = self.client.forcePause
         else:
-            func = self.api.client.pause
+            func = self.client.pause
 
         res = await func(self.gid)
         if isinstance(res, str):
@@ -268,7 +272,7 @@ class Download:
 
     @async_property
     async def resume(self) -> bool:
-        res = await self.api.client.unpause(self.gid)
+        res = await self.client.unpause(self.gid)
         if isinstance(res, str):
             return True
 
