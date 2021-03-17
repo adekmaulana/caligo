@@ -110,8 +110,7 @@ class Aria2WebSocket:
 
         meta = ""
         if file.metadata is True:
-            newGid = file.followed_by[0]
-            queue.put_nowait(newGid)
+            queue.put_nowait(file.followed_by[0])
             meta += " - Metadata"
         else:
             await self.api.invoker.reply("Completed download: `{file.name}`")
@@ -220,7 +219,8 @@ class Aria2(module.Module):
             if self.downloads:
                 await self.checkProgress()
                 progress = self.progress_string
-                await self.invoker.edit(progress)
+                if progress is not None:
+                    await self.invoker.edit(progress)
                 await asyncio.sleep(5)
             else:
                 await asyncio.sleep(1)
