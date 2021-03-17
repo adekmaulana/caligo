@@ -38,8 +38,7 @@ class Aria2WebSocket:
             "--rpc-listen-port=8080",
             "--max-connection-per-server=10",
             "--rpc-max-request-size=1024M",
-            "--seed-ratio=1",
-            "--seed-time=60",
+            "--seed-time=0.1",
             "--max-upload-limit=1024K",
             "--max-concurrent-downloads=5",
             "--min-split-size=10M",
@@ -48,6 +47,7 @@ class Aria2WebSocket:
             f"--bt-tracker={trackers}",
             "--daemon=true",
             "--allow-overwrite=true",
+            "--bt-save-metadata=true"
         ]
         protocol = "http://localhost:8080/jsonrpc"
 
@@ -195,7 +195,7 @@ class Aria2(module.Module):
             file_size = file.total_length
             percent = file.progress
             speed = file.download_speed
-            eta = time(file.eta) if file.eta != "N/A" else file.eta
+            eta = file.eta_formatted
 
             bullets = "●" * int(round(percent * 10)) + "○"
             if len(bullets) > 10:
@@ -207,7 +207,7 @@ class Aria2(module.Module):
                 f"Status: **{file.status.capitalize()}**\n"
                 f"Progress: [{bullets + space}] {round(percent * 100)}%\n"
                 f"{human(downloaded)} of {human(file_size)} @ "
-                f"{human(speed, postfix='/s')}\neta - {eta}\n\n"
+                f"{human(speed, postfix='/s')}\neta - {time(eta)}\n\n"
             )
 
         self.progress_string = progress_string

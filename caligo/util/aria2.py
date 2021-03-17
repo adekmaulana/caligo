@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from aioaria2 import Aria2WebsocketTrigger
 from async_property import async_property
@@ -235,14 +235,21 @@ class Download:
             return 0.0
 
     @property
-    def eta(self) -> Union[int, str]:
+    def eta(self) -> float:
         try:
             return round(
                 (self.total_length - self.completed_length) /
                 self.download_speed
             )
         except ZeroDivisionError:
-            return "N/A"
+            return 0.0
+
+    @property
+    def eta_formatted(self) -> float:
+        if self.eta == 0.0:
+            return timedelta.max
+
+        return timedelta(seconds=int(self.eta))
 
     @async_property
     async def remove(self, force: bool = False) -> bool:
