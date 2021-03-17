@@ -207,7 +207,7 @@ class Aria2(module.Module):
 
             progress_string += (
                 f"`{file.name}`\nGID: `{file.gid}`\n"
-                f"Status: **{file.status}**"
+                f"Status: **{file.status}**\n"
                 f"Progress: [{bullets + space}] {round(percent * 100)}%\n"
                 f"{human(downloaded)} of {human(file_size)} @ "
                 f"{human(speed, postfix='/s')}\neta - {eta}\n\n"
